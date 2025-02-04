@@ -16,6 +16,7 @@ import mimetypes
 import configparser
 import re
 import sys
+import ast
 
 # --- Read configuration from config.ini
 config = configparser.ConfigParser()
@@ -42,7 +43,9 @@ except ValueError:
 
 try:
     order_files_str = default_section['order_files']  # Read as string first
-    order_files = bool(order_files_str) 
+    print(f"order_files_str: {order_files_str}")
+    order_files = ast.literal_eval(order_files_str) 
+    print(f"order_files: {order_files}")
 except KeyError:
     print("Error: order_files is missing in config file.")
     order_files = False  # Default

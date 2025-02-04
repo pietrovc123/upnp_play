@@ -15,6 +15,8 @@ from mutagen.flac import FLAC
 import mimetypes
 import configparser
 import re
+import sys
+
 
 # --- Configuration ---
 config = configparser.ConfigParser()
@@ -195,6 +197,7 @@ def orchestrate_ssdp():
                 print("Invalid input. Please enter a number.")
     else:
         print("No devices found.")
+        sys.exit(0)  # 0 indicates successful exit
 
 
 

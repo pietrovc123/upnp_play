@@ -522,10 +522,39 @@ def replace_special_characters(text):
     The string with the characters replaced.
   """
   replacements = {
-      "&": "e",
-      "’": " ", 
-      "´": " ", 
-      "'": " "
+        "&": "e",
+        "è": "e",
+        "é": "e",  # e acute
+        "ê": "e",  # e circumflex
+        "ë": "e",  # e diaeresis/umlaut
+        "à": "a",  # a grave
+        "á": "a",  # a acute
+        "â": "a",  # a circumflex
+        "ä": "a",  # a diaeresis/umlaut
+        "ì": "i",  # i grave
+        "í": "i",  # i acute
+        "î": "i",  # i circumflex
+        "ï": "i",  # i diaeresis/umlaut
+        "ò": "o",  # o grave
+        "ó": "o",  # o acute
+        "ô": "o",  # o circumflex
+        "ö": "o",  # o diaeresis/umlaut
+        "ù": "u",  # u grave
+        "ú": "u",  # u acute
+        "û": "u",  # u circumflex
+        "ü": "u",  # u diaeresis/umlaut
+        "ç": "c",  # c cedilla
+        "ñ": "n",  # n tilde
+        "’": " ",  # apostrophe (curly)
+        "´": " ",  # acute accent (standalone)
+        "'": " ",   # apostrophe (straight)
+        "“": " ",   # double quotes (left)
+        "”": " ",   # double quotes (right)
+        "‘": " ",   # single quote (left)
+        "’": " ",  # single quote (right) (already present)
+        "—": "-",   # em dash
+        "–": "-",   # en dash
+        "…": "...", # horizontal ellipsis
   }
   for old_char, new_char in replacements.items():
     text = text.replace(old_char, new_char)

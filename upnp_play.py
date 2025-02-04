@@ -17,16 +17,55 @@ import configparser
 import re
 import sys
 
-
-# --- Configuration ---
+# --- Read configuration from config.ini
 config = configparser.ConfigParser()
 config.read('./config.ini')
-SERVER_PORT=int(config['DEFAULT']['SERVER_PORT'])
-threshold=int(config['DEFAULT']['threshold'])
-order_files=bool(config['DEFAULT']['order_files'])
-directory_path=config['DEFAULT']['directory_path']
+default_section = config['DEFAULT']
+
+SERVER_PORT = None  # Initialize to None for error checking
+threshold = None
+order_files = None
+directory_path = None
+
+try:
+    SERVER_PORT = default_section.getint('SERVER_PORT')
+except ValueError:
+    print("Error: SERVER_PORT must be an integer in config file.")
+    # Handle the error: use a default, exit, etc.
+    SERVER_PORT = 8080 # Example default
+
+try:
+    threshold = default_section.getint('threshold')
+except ValueError:
+    print("Error: threshold must be an integer in config file.")
+    threshold = 100 # Example default
+
+try:
+    order_files_str = default_section['order_files']  # Read as string first
+    order_files = bool(order_files_str) 
+except KeyError:
+    print("Error: order_files is missing in config file.")
+    order_files = False  # Default
+except ValueError: # this will never be raised now, but can be useful to catch other errors
+    print("Error: order_files must be a boolean (true/false/1/0/yes/no) in config file.")
+    order_files = False  # Default
+
+try:
+    directory_path = default_section['directory_path']
+except KeyError:
+    print("Error: directory_path is missing in config file.")
+    directory_path = "./music"  # Example default
 
 
+# Check if all required variables were successfully loaded
+if SERVER_PORT is None or threshold is None or order_files is None or directory_path is None:
+    print("Error: Some required configuration values could not be loaded.")
+    exit(1)  # Or handle it differently
+
+print(SERVER_PORT, threshold, order_files, directory_path) # Test/verify
+
+
+# --- UPNP SSDP protocol
 def discover_devices():
     """Discovers UPnP Media Renderers on the network, preventing duplicates and handling errors."""
     multicast_address = '239.255.255.250'

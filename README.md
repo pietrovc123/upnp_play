@@ -22,15 +22,18 @@ Download and extract upnp_play zip file into a directory different from where yo
     Run the program with:
     python upnp_play.py
 
+
 Android Box Configuration
 If you are using an Android box, you need to configure and enable media rendering for the apps:
+
     Kodi: Settings (gear icon) → Services → UPNP/DLNA → Enable "Allow remote control via UPNP"
+
     BubbleUPnP: More → Settings (gear icon) → Local Renderer → Enable "Allow remote control"
 
 Configuration
 Before running upnp_play, you need to edit the configuration file config.ini:
 
-[DEFAULT]
+
 # --- Configuration ---
 SERVER_PORT = 8000
 directory_path = /mnt/music
@@ -39,13 +42,18 @@ order_files = True  # Set to True to sort files, False to randomize order
 
 Parameter Explanation
 SERVER_PORT: The internal web server port (default 8000 is usually fine).
+
 directory_path: The directory containing MP3 or FLAC audio files.
+
 threshold:
     0 → Starts playback from the first file.
     10 → Starts playback from the 10th file onwards (useful if files are numbered sequentially, e.g., 010file, 011file, etc.).
+
 order_files:
     True → Sorts files in order.
     False → Plays files in random order.
+
+
 
 DISCLAIMER
 upnp_play is provided "as is" without any warranties, express or implied. The user assumes full responsibility for using this software.

@@ -524,6 +524,7 @@ def replace_special_characters(text):
   replacements = {
         "&": "e",
         "｜": "-",
+        "⧸" : "-",
         "è": "e",
         "é": "e",  # e acute
         "ê": "e",  # e circumflex

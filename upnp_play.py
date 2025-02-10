@@ -284,7 +284,7 @@ def send_upnp_request(soap_action, xml_data):
     try:
         response = requests.post(CONTROL_URL, headers=headers, data=xml_data)
         response.raise_for_status() # Throws an exception for invalid HTTP status codes (4xx or 5xx)
-        print(f"Riquest for {soap_action}")
+        print(f"Request for {soap_action}")
         return response.text
     except requests.exceptions.RequestException as e:
         print(f"Error in request for {soap_action}: {e}")
@@ -309,40 +309,61 @@ def parse_xml_response(xml_string, namespaces=None):
 
 
 # --- Web Server ---
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import os
+import mimetypes
+import socket
+
 class MyHandler(BaseHTTPRequestHandler):
+    def handle_connection_error(self, e):
+        """Silently handle connection errors without trying to send error responses"""
+        if isinstance(e, (BrokenPipeError, ConnectionResetError)):
+            # Suppress the error trace for client disconnections
+            self.close_connection = True
+            return True
+        return False
+
     def do_GET(self):
         try:
             filename = self.path[1:]
             if not filename:
                 self.send_error(404, "File not specified")
                 return
-
+                
             file_path = filename
-
-            if os.path.exists(file_path):
-                try:
-                    with open(file_path, "rb") as f:
-                        self.send_response(200)
-
-                        # Determine the Content-type based on the file extension
-                        content_type, _ = mimetypes.guess_type(file_path)
-                        if content_type is None:
-                            content_type = 'application/octet-stream'  # Generic type if not recognized
-                        self.send_header('Content-type', content_type)
-
-                        self.end_headers()
-
-                        chunk_size = 1024 * 64
-                        while chunk := f.read(chunk_size):
-                            self.wfile.write(chunk)
-
-                except Exception as e:
-                    self.send_error(500, f"Error serving file: {e}")
-            else:
+            if not os.path.exists(file_path):
                 self.send_error(404, "File not found")
+                return
 
+            try:
+                with open(file_path, "rb") as f:
+                    self.send_response(200)
+                    # Determine the Content-type based on the file extension
+                    content_type, _ = mimetypes.guess_type(file_path)
+                    if content_type is None:
+                        content_type = 'application/octet-stream'
+                    self.send_header('Content-type', content_type)
+                    self.end_headers()
+                    
+                    chunk_size = 1024 * 64
+                    while True:
+                        chunk = f.read(chunk_size)
+                        if not chunk:
+                            break
+                        try:
+                            self.wfile.write(chunk)
+                        except (BrokenPipeError, ConnectionResetError) as e:
+                            # Client disconnected - stop sending data
+                            self.handle_connection_error(e)
+                            return
+                        
+            except Exception as e:
+                if not self.handle_connection_error(e):
+                    self.send_error(500, f"Error serving file: {str(e)}")
+                    
         except Exception as e:
-            self.send_error(500, f"Internal server error: {e}")
+            if not self.handle_connection_error(e):
+                self.send_error(500, f"Internal server error: {str(e)}")
 
     def do_HEAD(self):
         try:
@@ -350,9 +371,8 @@ class MyHandler(BaseHTTPRequestHandler):
             if not filename:
                 self.send_error(404, "File not specified")
                 return
-
+                
             file_path = filename
-
             if os.path.exists(file_path):
                 self.send_response(200)
                 content_type, _ = mimetypes.guess_type(file_path)
@@ -362,12 +382,11 @@ class MyHandler(BaseHTTPRequestHandler):
                 self.end_headers()
             else:
                 self.send_error(404, "File not found")
+                
+        except Exception as e:
+            if not self.handle_connection_error(e):
+                self.send_error(500, "Internal server error")
 
-        except Exception:
-            self.send_error(500, "Internal server error")
-
-
-# --- Starting the web server in a separate thread ---
 def run_web_server(port):
     server_address = ('', port)
     httpd = HTTPServer(server_address, MyHandler)
@@ -401,6 +420,9 @@ stop_xml = """<?xml version="1.0" encoding="utf-8"?>
     </u:Stop>
   </s:Body>
 </s:Envelope>"""
+
+# --- PositionInfo ---
+PositionInfo_xml = """<?xml version="1.0" encoding="UTF-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:GetPositionInfo xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID></u:GetPositionInfo></s:Body></s:Envelope>"""
 
 # --- GetTransportInfo Loop ---
 def get_transport_info_loop():
@@ -525,6 +547,7 @@ def replace_special_characters(text):
         "&": "e",
         "｜": "-",
         "⧸" : "-",
+        "♫" : "-",
         "è": "e",
         "é": "e",  # e acute
         "ê": "e",  # e circumflex
@@ -602,7 +625,7 @@ for filename in filtered_file_list:
     print(f"album: {album}")
 
 
-    # --- SetAVTransportURI ---
+    # --- SetAVTransportURI non compatible---
     set_uri_xml = f"""<?xml version="1.0" encoding="utf-8"?>
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
   <s:Body>
@@ -624,6 +647,29 @@ for filename in filtered_file_list:
     </u:SetAVTransportURI>
   </s:Body>
 </s:Envelope>"""
+
+    # --- SetAVTransportURI compatible with Kodi ---
+    set_uri_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+  <s:Body>
+    <u:SetAVTransportURI xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+      <InstanceID>0</InstanceID>
+      <CurrentURI>{FILE_PATH}</CurrentURI>
+      <CurrentURIMetaData>
+        &lt;DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:sec="http://www.sec.co.kr/" xmlns:pv="http://www.pv.com/pvns/" xmlns:dlna="urn:schemas-dlna-org:metadata-1-0"&gt;
+          &lt;item id="1000" parentID="0" restricted="0"&gt;
+            &lt;dc:title&gt;{filename_view}&lt;/dc:title&gt;
+            &lt;dc:description/&gt;
+            &lt;res protocolInfo="http-get:*:audio/mpeg:DLNA.ORG_OP=01"&gt;{FILE_PATH}&lt;/res&gt;
+            &lt;upnp:albumArtURI&gt;{FILE_PATH_ICON}&lt;/upnp:albumArtURI&gt;
+            &lt;upnp:class&gt;object.item.audioItem&lt;/upnp:class&gt;
+          &lt;/item&gt;
+        &lt;/DIDL-Lite&gt;
+      </CurrentURIMetaData>
+    </u:SetAVTransportURI>
+  </s:Body>
+</s:Envelope>"""
+
     print(f"SetAVTransportURI:  {set_uri_xml}")
     # Copia file
     file_copy = "./" + filetocopy  # Replace with the desired path for the copy
@@ -634,6 +680,8 @@ for filename in filtered_file_list:
     send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI", set_uri_xml)
     time.sleep(1)
     send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#Play", play_xml)
+    time.sleep(20)
+    send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#GetPositionInfo", PositionInfo_xml)
     time.sleep(1)
     # --- Start the GetTransportInfo loop ---
     get_transport_info_loop()

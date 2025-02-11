@@ -625,30 +625,8 @@ for filename in filtered_file_list:
     print(f"album: {album}")
 
 
-    # --- SetAVTransportURI non compatible---
-    set_uri_xml = f"""<?xml version="1.0" encoding="utf-8"?>
-<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-  <s:Body>
-    <u:SetAVTransportURI xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
-      <InstanceID>0</InstanceID>
-      <CurrentURI>{FILE_PATH}</CurrentURI>
-      <CurrentURIMetaData>
-        &lt;DIDL-Lite xmlns=&quot;urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/&quot; xmlns:dc=&quot;http://purl.org/dc/elements/1.1/&quot; xmlns:upnp=&quot;urn:schemas-upnp-org:metadata-1-0/upnp/&quot; xmlns:dlna=&quot;urn:schemas-dlna-org:metadata-1-0/&quot;&gt;
-          &lt;item id=&quot;1&quot; parentID=&quot;1&quot; restricted=&quot;1&quot;&gt;
-            &lt;upnp:class&gt;object.item.audioItem.audioBroadcast&lt;/upnp:class&gt;
-            &lt;upnp:album&gt;{album}&lt;/upnp:album&gt;
-            &lt;upnp:artist&gt;{artist}&lt;/upnp:artist&gt;
-            &lt;upnp:albumArtURI&gt;{FILE_PATH_ICON}&lt;/upnp:albumArtURI&gt;
-            &lt;dc:title&gt;{filename_view}&lt;/dc:title&gt;
-            &lt;res protocolInfo=&quot;http-get:*:audio/mpeg:*&quot; &gt;{FILE_PATH} &lt;/res&gt;
-          &lt;/item&gt;
-        &lt;/DIDL-Lite&gt;
-      </CurrentURIMetaData>
-    </u:SetAVTransportURI>
-  </s:Body>
-</s:Envelope>"""
 
-    # --- SetAVTransportURI compatible with Kodi ---
+    # --- SetAVTransportURI completo ---
     set_uri_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
   <s:Body>
@@ -661,6 +639,8 @@ for filename in filtered_file_list:
             &lt;dc:title&gt;{filename_view}&lt;/dc:title&gt;
             &lt;dc:description/&gt;
             &lt;res protocolInfo="http-get:*:audio/mpeg:DLNA.ORG_OP=01"&gt;{FILE_PATH}&lt;/res&gt;
+            &lt;upnp:album&gt;{album}&lt;/upnp:album&gt;
+            &lt;upnp:artist&gt;{artist}&lt;/upnp:artist&gt;
             &lt;upnp:albumArtURI&gt;{FILE_PATH_ICON}&lt;/upnp:albumArtURI&gt;
             &lt;upnp:class&gt;object.item.audioItem&lt;/upnp:class&gt;
           &lt;/item&gt;
@@ -675,13 +655,21 @@ for filename in filtered_file_list:
     file_copy = "./" + filetocopy  # Replace with the desired path for the copy
     copy_file(directory_path + "/" + filename, file_copy)
     # --- Send SOAP requests upnp ---
-    send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#Stop", stop_xml)
+    Stop_info_response = send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#Stop", stop_xml)
+    if Stop_info_response:
+        print(f"Stop_info_response: {Stop_info_response}")
     time.sleep(1)
-    send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI", set_uri_xml)
+    SetAVTransportURI_info_response = send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI", set_uri_xml)
+    if SetAVTransportURI_info_response:
+        print(f"SetAVTransportURI_info_response: {SetAVTransportURI_info_response}")
     time.sleep(1)
-    send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#Play", play_xml)
-    time.sleep(20)
-    send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#GetPositionInfo", PositionInfo_xml)
+    Play_info_response = send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#Play", play_xml)
+    if Play_info_response:
+        print(f"Play_info_response: {Play_info_response}")
+    time.sleep(5)
+    GetPositionInfo_info_response = send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#GetPositionInfo", PositionInfo_xml)
+    if GetPositionInfo_info_response:
+        print(f"GetPositionInfo_info_response: {GetPositionInfo_info_response}")
     time.sleep(1)
     # --- Start the GetTransportInfo loop ---
     get_transport_info_loop()

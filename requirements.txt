@@ -2,7 +2,6 @@ requests
 lxml
 netifaces
 mutagen
-keyboard
-pynput
+
 
 

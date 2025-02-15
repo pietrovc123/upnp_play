@@ -448,33 +448,63 @@ stop_xml = """<?xml version="1.0" encoding="utf-8"?>
 # --- PositionInfo ---
 PositionInfo_xml = """<?xml version="1.0" encoding="UTF-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:GetPositionInfo xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID></u:GetPositionInfo></s:Body></s:Envelope>"""
 
+# --- Pause ---
+pause_xml = """
+<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
+    s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+    <s:Body>
+        <u:Pause xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+            <InstanceID>0</InstanceID> 
+        </u:Pause>
+    </s:Body>
+</s:Envelope>"""
 
 # --- GetTransportInfo Loop ---
 def get_transport_info_loop():
     proc_running = True
+    paused = False  # Flag to indicate if the loop is paused
     pressed_key = None
     lock = threading.Lock()
-    
+
     def on_press(key):
-        nonlocal pressed_key
+        nonlocal pressed_key, paused
         try:
             char = key.char
         except AttributeError:
             char = None
         with lock:
             pressed_key = char
-    
-    # Using the context manager automatically starts the listener
+            if char == 'p':
+                paused = True
+                if paused: 
+                    pause_response = send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#Pause", pause_xml)
+                    if pause_response:
+                        print(f"pause_response: {pause_response}")
+                print(f"Loop {'paused' if paused else 'resumed'}")
+            elif char == 'c':  # Added 'c' to continue
+                paused = False
+                Play_info_response = send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#Play", play_xml)
+                if Play_info_response:
+                    print(f"Play_info_response: {Play_info_response}")
+                print("Loop resumed")
+            elif char == 'n':
+                print("Key 'n' pressed. Exiting loop and go to the next song.")
+                proc_running = False
+
+
+
     with keyboard.Listener(on_press=on_press) as listener:
-        
         while proc_running:
             with lock:
-                if pressed_key == 'n':
-                    print("Key 'n' pressed. Exiting loop and go to the next song.")
-                    proc_running = False
+                if pressed_key == 'n': #This check has been moved inside the lock
                     break
                 pressed_key = None
-                
+
+            if paused:  # Check pause state at the beginning of the loop
+                time.sleep(0.1)  # Small sleep to avoid busy-waiting
+                continue  # Skip the rest of the loop iteration
+
             get_transport_info_xml = """<?xml version="1.0"?>
             <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
               <s:Body>
@@ -483,7 +513,7 @@ def get_transport_info_loop():
                 </u:GetTransportInfo>
               </s:Body>
             </s:Envelope>"""
-            
+
             transport_info_response = send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo", get_transport_info_xml)
             if transport_info_response:
                 print("GetTransportInfo request sent and response received. Parsing...")
@@ -508,9 +538,8 @@ def get_transport_info_loop():
                 print("GetTransportInfo request failed.")
                 proc_running = False
                 break
-                
-            time.sleep(10)
 
+            time.sleep(10)
 
 def extract_number_from_filename(filename):
     """

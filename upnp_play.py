@@ -159,8 +159,8 @@ def get_control_url(location):
         response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
 
         root = ET.fromstring(response.text)
-        namespaces = {'xmlns': 'urn:schemas-upnp-org:device-1-0'}
 
+        namespaces = {'xmlns': 'urn:schemas-upnp-org:device-1-0'}
         service_type = "urn:schemas-upnp-org:service:AVTransport:1"
         control_url = None
 
@@ -184,6 +184,27 @@ def get_control_url(location):
         print(f"Other error during XML processing: {e}")
         return None
 
+def get_friendly_name(location):
+    """Retrieves the friendly_name from a device's description XML."""
+    try:
+        response = requests.get(location)
+        response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
+
+        root = ET.fromstring(response.text)
+
+        # Find the friendlyName tag within the device tag.  Because of the namespaces, we need to use find with the full path, or use findall and iterate.
+        friendly_name = root.find(".//{urn:schemas-upnp-org:device-1-0}device/{urn:schemas-upnp-org:device-1-0}friendlyName").text
+        return friendly_name
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error during request to {location}: {e}")
+        return None
+    except ET.ParseError as e:
+        print(f"Error parsing XML: {e}")
+        return None
+    except Exception as e:
+        print(f"Other error during XML processing: {e}")
+        return None
 
 
 def process_device(location, server):
@@ -213,7 +234,9 @@ def orchestrate_ssdp():
     if location_server_pairs:
         print("\nServer UPNP/DLNA Selection Menu:")
         for i, (location, server) in enumerate(location_server_pairs):
-            print(f"{i + 1}. {server}")
+            friendly_name = get_friendly_name(location)
+            print(f"{i + 1}. {friendly_name} - {server}")
+
 
         print("0. Exit")
 
@@ -443,7 +466,6 @@ def get_transport_info_loop():
     
     # Using the context manager automatically starts the listener
     with keyboard.Listener(on_press=on_press) as listener:
-        # Remove this line: listener.start()  <- This was causing the error
         
         while proc_running:
             with lock:

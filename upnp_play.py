@@ -17,7 +17,8 @@ import configparser
 import re
 import sys
 import ast
-from pynput import keyboard
+import curses
+from contextlib import contextmanager
 
 # --- Read configuration from config.ini
 config = configparser.ConfigParser()
@@ -461,50 +462,57 @@ pause_xml = """
 </s:Envelope>"""
 
 # --- GetTransportInfo Loop ---
+@contextmanager
+def curses_setup():
+    """Context manager for curses setup and cleanup"""
+    stdscr = curses.initscr()
+    curses.noecho()
+    curses.cbreak()
+    stdscr.keypad(True)
+    stdscr.nodelay(True)  # Make getch non-blocking
+    try:
+        yield stdscr
+    finally:
+        # Clean up curses
+        curses.endwin()
+        # Restore terminal settings
+        curses.nocbreak()
+        curses.echo()
+
 def get_transport_info_loop():
-    proc_running = True
-    paused = False  # Flag to indicate if the loop is paused
-    pressed_key = None
-    lock = threading.Lock()
-
-    def on_press(key):
-        nonlocal pressed_key, paused
-        try:
-            char = key.char
-        except AttributeError:
-            char = None
-        with lock:
-            pressed_key = char
-            if char == 'p':
-                paused = True
-                if paused: 
-                    pause_response = send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#Pause", pause_xml)
-                    if pause_response:
-                        print(f"pause_response: {pause_response}")
-                print(f"Loop {'paused' if paused else 'resumed'}")
-            elif char == 'c':  # Added 'c' to continue
-                paused = False
-                Play_info_response = send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#Play", play_xml)
-                if Play_info_response:
-                    print(f"Play_info_response: {Play_info_response}")
-                print("Loop resumed")
-            elif char == 'n':
-                print("Key 'n' pressed. Exiting loop and go to the next song.")
-                proc_running = False
-
-
-
-    with keyboard.Listener(on_press=on_press) as listener:
+    with curses_setup() as stdscr:
+        proc_running = True
+        paused = False
+        
         while proc_running:
-            with lock:
-                if pressed_key == 'n': #This check has been moved inside the lock
-                    break
-                pressed_key = None
-
-            if paused:  # Check pause state at the beginning of the loop
-                time.sleep(0.1)  # Small sleep to avoid busy-waiting
-                continue  # Skip the rest of the loop iteration
-
+            # Check for key presses
+            try:
+                key = stdscr.getch()
+                if key != -1:  # -1 means no key was pressed
+                    if key == ord('p'):
+                        paused = True
+                        pause_response = send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#Pause", pause_xml)
+                        if pause_response:
+                            print(f"pause_response: {pause_response}")
+                        print(f"Loop {'paused' if paused else 'resumed'}")
+                    elif key == ord('c'):
+                        paused = False
+                        play_info_response = send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#Play", play_xml)
+                        if play_info_response:
+                            print(f"Play_info_response: {play_info_response}")
+                        print("Loop resumed")
+                    elif key == ord('n'):
+                        print("Key 'n' pressed. Exiting loop and go to the next song.")
+                        proc_running = False
+                        break
+            except curses.error:
+                # Handle potential curses errors
+                pass
+                
+            if paused:
+                time.sleep(0.1)
+                continue
+                
             get_transport_info_xml = """<?xml version="1.0"?>
             <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
               <s:Body>
@@ -513,7 +521,7 @@ def get_transport_info_loop():
                 </u:GetTransportInfo>
               </s:Body>
             </s:Envelope>"""
-
+            
             transport_info_response = send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo", get_transport_info_xml)
             if transport_info_response:
                 print("GetTransportInfo request sent and response received. Parsing...")
@@ -538,7 +546,7 @@ def get_transport_info_loop():
                 print("GetTransportInfo request failed.")
                 proc_running = False
                 break
-
+                
             time.sleep(10)
 
 def extract_number_from_filename(filename):

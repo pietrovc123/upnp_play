@@ -2,6 +2,7 @@ requests
 lxml
 netifaces
 mutagen
+pynput
 
 
 

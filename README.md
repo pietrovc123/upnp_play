@@ -8,6 +8,9 @@ Download and extract upnp_play zip file into a directory different from where yo
 
     Linux
     Python 3 and its libraries are usually pre-installed, so you only need to run:
+    python3 -m venv upnp-play-env
+    source upnp-play-env/bin/activate
+    pip install -r requirements.txt
     python3 upnp_play.py
 
     Windows
@@ -15,13 +18,12 @@ Download and extract upnp_play zip file into a directory different from where yo
     1) Download and install the stable release of Python.
     2) Download and install Visual C++ Build Tools and select C++ (requires a lot of space).
     3) Install the necessary libraries using the following commands:
-    python -m pip install requests
-    python -m pip install lxml
-    python -m pip install netifaces
-    python -m pip install mutagen
-    Run the program with:
+    python -m venv upnp-play-env
+    source upnp-play-env/bin/activate
+    pip install -r requirements.txt
     python upnp_play.py
 
+You can use "n" and wait a few second to skip the current song.
 
 Android Box Configuration
 If you are using an Android box, you need to configure and enable media rendering for the apps:

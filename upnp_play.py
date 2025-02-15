@@ -17,6 +17,7 @@ import configparser
 import re
 import sys
 import ast
+from pynput import keyboard
 
 # --- Read configuration from config.ini
 config = configparser.ConfigParser()
@@ -424,52 +425,70 @@ stop_xml = """<?xml version="1.0" encoding="utf-8"?>
 # --- PositionInfo ---
 PositionInfo_xml = """<?xml version="1.0" encoding="UTF-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:GetPositionInfo xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID></u:GetPositionInfo></s:Body></s:Envelope>"""
 
+
 # --- GetTransportInfo Loop ---
 def get_transport_info_loop():
-    proc_running = True  # Internal control variable
-    while proc_running:
-        get_transport_info_xml = """<?xml version="1.0"?>
-        <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-          <s:Body>
-            <u:GetTransportInfo xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
-              <InstanceID>0</InstanceID>
-            </u:GetTransportInfo>
-          </s:Body>
-        </s:Envelope>"""
-
-        transport_info_response = send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo", get_transport_info_xml)
-
-        if transport_info_response:
-            print("GetTransportInfo request sent and response received. Parsing...")
-            namespaces = {'s': 'http://schemas.xmlsoap.org/soap/envelope/', 'u': 'urn:schemas-upnp-org:service:AVTransport:1'}
-            root, error = parse_xml_response(transport_info_response, namespaces)
-            print(f"root: {root}")
-
-            if root is not None:
-                try:
-                    transport_state = root.find('.//CurrentTransportState', namespaces=namespaces).text
-                    print(f"Transport status: {transport_state}")
-
-                    if transport_state == "STOPPED":
-                        print("Player is STOPPED. Exiting loop.")
-                        proc_running = False
-                        break
-
-                    transport_status = root.find('.//CurrentTransportStatus', namespaces=namespaces).text if root.find('.//CurrentTransportStatus', namespaces=namespaces) is not None else "N/A"
-                    print(f"Specific state: {transport_status}")
-
-
-                except AttributeError as e:
-                    print(f"Errore durante la ricerca dell'elemento XML: {e}")
-                    print(transport_info_response)
+    proc_running = True
+    pressed_key = None
+    lock = threading.Lock()
+    
+    def on_press(key):
+        nonlocal pressed_key
+        try:
+            char = key.char
+        except AttributeError:
+            char = None
+        with lock:
+            pressed_key = char
+    
+    # Using the context manager automatically starts the listener
+    with keyboard.Listener(on_press=on_press) as listener:
+        # Remove this line: listener.start()  <- This was causing the error
+        
+        while proc_running:
+            with lock:
+                if pressed_key == 'n':
+                    print("Key 'n' pressed. Exiting loop and go to the next song.")
+                    proc_running = False
+                    break
+                pressed_key = None
+                
+            get_transport_info_xml = """<?xml version="1.0"?>
+            <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+              <s:Body>
+                <u:GetTransportInfo xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+                  <InstanceID>0</InstanceID>
+                </u:GetTransportInfo>
+              </s:Body>
+            </s:Envelope>"""
+            
+            transport_info_response = send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo", get_transport_info_xml)
+            if transport_info_response:
+                print("GetTransportInfo request sent and response received. Parsing...")
+                namespaces = {'s': 'http://schemas.xmlsoap.org/soap/envelope/', 'u': 'urn:schemas-upnp-org:service:AVTransport:1'}
+                root, error = parse_xml_response(transport_info_response, namespaces)
+                if root is not None:
+                    try:
+                        transport_state = root.find('.//CurrentTransportState', namespaces=namespaces).text
+                        print(f"Transport status: {transport_state}")
+                        if transport_state == "STOPPED":
+                            print("Player is STOPPED. Exiting loop.")
+                            proc_running = False
+                            break
+                        transport_status = root.find('.//CurrentTransportStatus', namespaces=namespaces).text if root.find('.//CurrentTransportStatus', namespaces=namespaces) is not None else "N/A"
+                        print(f"Specific state: {transport_status}")
+                    except AttributeError as e:
+                        print(f"Error during XML element search: {e}")
+                        print(transport_info_response)
+                else:
+                    print(f"Error parsing XML: {error}")
             else:
-                print(f"Error finding XML element: {error}")
-        else:
-            print("GetTransportInfo request failed.")
-            proc_running = False
-            break           
+                print("GetTransportInfo request failed.")
+                proc_running = False
+                break
+                
+            time.sleep(10)
 
-        time.sleep(10)
 
 def extract_number_from_filename(filename):
     """
@@ -548,6 +567,7 @@ def replace_special_characters(text):
         "｜": "-",
         "⧸" : "-",
         "♫" : "-",
+        '＂' : " ",
         "è": "e",
         "é": "e",  # e acute
         "ê": "e",  # e circumflex

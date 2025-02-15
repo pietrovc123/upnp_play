@@ -464,47 +464,60 @@ pause_xml = """
 def get_transport_info_loop():
     proc_running = True
     paused = False  # Flag to indicate if the loop is paused
-    pressed_key = None
     lock = threading.Lock()
-
+    
+    # Track Control key state
+    ctrl_held = False
+    
     def on_press(key):
-        nonlocal pressed_key, paused
-        try:
-            char = key.char
-        except AttributeError:
-            char = None
-        with lock:
-            pressed_key = char
-            if char == 'p':
-                paused = True
-                if paused: 
-                    pause_response = send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#Pause", pause_xml)
-                    if pause_response:
-                        print(f"pause_response: {pause_response}")
-                print(f"Loop {'paused' if paused else 'resumed'}")
-            elif char == 'c':  # Added 'c' to continue
-                paused = False
-                Play_info_response = send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#Play", play_xml)
-                if Play_info_response:
-                    print(f"Play_info_response: {Play_info_response}")
-                print("Loop resumed")
-            elif char == 'n':
-                print("Key 'n' pressed. Exiting loop and go to the next song.")
-                proc_running = False
-
-
-
-    with keyboard.Listener(on_press=on_press) as listener:
+        nonlocal paused, proc_running, ctrl_held
+        
+        # Check if Control key is pressed
+        if hasattr(keyboard, 'Key') and isinstance(key, keyboard.Key) and key in (keyboard.Key.ctrl_l, keyboard.Key.ctrl_r, keyboard.Key.ctrl):
+            ctrl_held = True
+            return
+        
+        # Handle Ctrl+key combinations when ctrl is held
+        if ctrl_held:
+            try:
+                if hasattr(key, 'char') and key.char:
+                    if key.char == 'p':
+                        with lock:
+                            paused = True
+                            pause_response = send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#Pause", pause_xml)
+                            if pause_response:
+                                print(f"pause_response: {pause_response}")
+                            print("Loop paused")
+                    elif key.char == 'r':
+                        with lock:
+                            paused = False
+                            Play_info_response = send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#Play", play_xml)
+                            if Play_info_response:
+                                print(f"Play_info_response: {Play_info_response}")
+                            print("Loop resumed")
+                    elif key.char == 'n':
+                        with lock:
+                            print("Ctrl+n pressed. Exiting loop and go to the next song.")
+                            proc_running = False
+            except (AttributeError, TypeError):
+                pass  # Ignore errors if the key doesn't have expected attributes
+    
+    def on_release(key):
+        nonlocal ctrl_held
+        # Release Control key state
+        if hasattr(keyboard, 'Key') and isinstance(key, keyboard.Key) and key in (keyboard.Key.ctrl_l, keyboard.Key.ctrl_r, keyboard.Key.ctrl):
+            ctrl_held = False
+    
+    with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
         while proc_running:
             with lock:
-                if pressed_key == 'n': #This check has been moved inside the lock
+                if not proc_running:  # Check if we need to exit
                     break
-                pressed_key = None
-
+                
             if paused:  # Check pause state at the beginning of the loop
                 time.sleep(0.1)  # Small sleep to avoid busy-waiting
                 continue  # Skip the rest of the loop iteration
-
+                
             get_transport_info_xml = """<?xml version="1.0"?>
             <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
               <s:Body>
@@ -513,7 +526,6 @@ def get_transport_info_loop():
                 </u:GetTransportInfo>
               </s:Body>
             </s:Envelope>"""
-
             transport_info_response = send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo", get_transport_info_xml)
             if transport_info_response:
                 print("GetTransportInfo request sent and response received. Parsing...")
@@ -538,8 +550,8 @@ def get_transport_info_loop():
                 print("GetTransportInfo request failed.")
                 proc_running = False
                 break
-
             time.sleep(10)
+
 
 def extract_number_from_filename(filename):
     """

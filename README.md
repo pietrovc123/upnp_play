@@ -19,11 +19,10 @@ Download and extract upnp_play zip file into a directory different from where yo
     2) Download and install Visual C++ Build Tools and select C++ (requires a lot of space).
     3) Install the necessary libraries using the following commands:
     python -m venv upnp-play-env
-    source upnp-play-env/bin/activate
+    upnp-play-env/Scripts/activate
     pip install -r requirements.txt
     python upnp_play.py
 
-You can use "ctrl + n" and wait a few second to skip the current song, "ctrl + p" to pause and "ctrl + r" to resume.
 
 Android Box Configuration
 If you are using an Android box, you need to configure and enable media rendering for the apps:

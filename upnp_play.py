@@ -17,7 +17,6 @@ import configparser
 import re
 import sys
 import ast
-from pynput import keyboard
 
 # --- Read configuration from config.ini
 config = configparser.ConfigParser()
@@ -159,8 +158,8 @@ def get_control_url(location):
         response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
 
         root = ET.fromstring(response.text)
-
         namespaces = {'xmlns': 'urn:schemas-upnp-org:device-1-0'}
+
         service_type = "urn:schemas-upnp-org:service:AVTransport:1"
         control_url = None
 
@@ -184,27 +183,6 @@ def get_control_url(location):
         print(f"Other error during XML processing: {e}")
         return None
 
-def get_friendly_name(location):
-    """Retrieves the friendly_name from a device's description XML."""
-    try:
-        response = requests.get(location)
-        response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
-
-        root = ET.fromstring(response.text)
-
-        # Find the friendlyName tag within the device tag.  Because of the namespaces, we need to use find with the full path, or use findall and iterate.
-        friendly_name = root.find(".//{urn:schemas-upnp-org:device-1-0}device/{urn:schemas-upnp-org:device-1-0}friendlyName").text
-        return friendly_name
-
-    except requests.exceptions.RequestException as e:
-        print(f"Error during request to {location}: {e}")
-        return None
-    except ET.ParseError as e:
-        print(f"Error parsing XML: {e}")
-        return None
-    except Exception as e:
-        print(f"Other error during XML processing: {e}")
-        return None
 
 
 def process_device(location, server):
@@ -234,9 +212,7 @@ def orchestrate_ssdp():
     if location_server_pairs:
         print("\nServer UPNP/DLNA Selection Menu:")
         for i, (location, server) in enumerate(location_server_pairs):
-            friendly_name = get_friendly_name(location)
-            print(f"{i + 1}. {friendly_name} - {server}")
-
+            print(f"{i + 1}. {server}")
 
         print("0. Exit")
 
@@ -448,110 +424,52 @@ stop_xml = """<?xml version="1.0" encoding="utf-8"?>
 # --- PositionInfo ---
 PositionInfo_xml = """<?xml version="1.0" encoding="UTF-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:GetPositionInfo xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID></u:GetPositionInfo></s:Body></s:Envelope>"""
 
-# --- Pause ---
-pause_xml = """
-<?xml version="1.0"?>
-<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
-    s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-    <s:Body>
-        <u:Pause xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
-            <InstanceID>0</InstanceID> 
-        </u:Pause>
-    </s:Body>
-</s:Envelope>"""
-
 # --- GetTransportInfo Loop ---
 def get_transport_info_loop():
-    proc_running = True
-    paused = False  # Flag to indicate if the loop is paused
-    lock = threading.Lock()
-    
-    # Track Control key state
-    ctrl_held = False
-    
-    def on_press(key):
-        nonlocal paused, proc_running, ctrl_held
-        
-        # Check if Control key is pressed
-        if hasattr(keyboard, 'Key') and isinstance(key, keyboard.Key) and key in (keyboard.Key.ctrl_l, keyboard.Key.ctrl_r, keyboard.Key.ctrl):
-            ctrl_held = True
-            return
-        
-        # Handle Ctrl+key combinations when ctrl is held
-        if ctrl_held:
-            try:
-                if hasattr(key, 'char') and key.char:
-                    if key.char == 'p':
-                        with lock:
-                            paused = True
-                            pause_response = send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#Pause", pause_xml)
-                            if pause_response:
-                                print(f"pause_response: {pause_response}")
-                            print("Loop paused")
-                    elif key.char == 'r':
-                        with lock:
-                            paused = False
-                            Play_info_response = send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#Play", play_xml)
-                            if Play_info_response:
-                                print(f"Play_info_response: {Play_info_response}")
-                            print("Loop resumed")
-                    elif key.char == 'n':
-                        with lock:
-                            print("Ctrl+n pressed. Exiting loop and go to the next song.")
-                            proc_running = False
-            except (AttributeError, TypeError):
-                pass  # Ignore errors if the key doesn't have expected attributes
-    
-    def on_release(key):
-        nonlocal ctrl_held
-        # Release Control key state
-        if hasattr(keyboard, 'Key') and isinstance(key, keyboard.Key) and key in (keyboard.Key.ctrl_l, keyboard.Key.ctrl_r, keyboard.Key.ctrl):
-            ctrl_held = False
-    
-    with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
-        while proc_running:
-            with lock:
-                if not proc_running:  # Check if we need to exit
-                    break
-                
-            if paused:  # Check pause state at the beginning of the loop
-                time.sleep(0.1)  # Small sleep to avoid busy-waiting
-                continue  # Skip the rest of the loop iteration
-                
-            get_transport_info_xml = """<?xml version="1.0"?>
-            <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-              <s:Body>
-                <u:GetTransportInfo xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
-                  <InstanceID>0</InstanceID>
-                </u:GetTransportInfo>
-              </s:Body>
-            </s:Envelope>"""
-            transport_info_response = send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo", get_transport_info_xml)
-            if transport_info_response:
-                print("GetTransportInfo request sent and response received. Parsing...")
-                namespaces = {'s': 'http://schemas.xmlsoap.org/soap/envelope/', 'u': 'urn:schemas-upnp-org:service:AVTransport:1'}
-                root, error = parse_xml_response(transport_info_response, namespaces)
-                if root is not None:
-                    try:
-                        transport_state = root.find('.//CurrentTransportState', namespaces=namespaces).text
-                        print(f"Transport status: {transport_state}")
-                        if transport_state == "STOPPED":
-                            print("Player is STOPPED. Exiting loop.")
-                            proc_running = False
-                            break
-                        transport_status = root.find('.//CurrentTransportStatus', namespaces=namespaces).text if root.find('.//CurrentTransportStatus', namespaces=namespaces) is not None else "N/A"
-                        print(f"Specific state: {transport_status}")
-                    except AttributeError as e:
-                        print(f"Error during XML element search: {e}")
-                        print(transport_info_response)
-                else:
-                    print(f"Error parsing XML: {error}")
-            else:
-                print("GetTransportInfo request failed.")
-                proc_running = False
-                break
-            time.sleep(10)
+    proc_running = True  # Internal control variable
+    while proc_running:
+        get_transport_info_xml = """<?xml version="1.0"?>
+        <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+          <s:Body>
+            <u:GetTransportInfo xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+              <InstanceID>0</InstanceID>
+            </u:GetTransportInfo>
+          </s:Body>
+        </s:Envelope>"""
 
+        transport_info_response = send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo", get_transport_info_xml)
+
+        if transport_info_response:
+            print("GetTransportInfo request sent and response received. Parsing...")
+            namespaces = {'s': 'http://schemas.xmlsoap.org/soap/envelope/', 'u': 'urn:schemas-upnp-org:service:AVTransport:1'}
+            root, error = parse_xml_response(transport_info_response, namespaces)
+            print(f"root: {root}")
+
+            if root is not None:
+                try:
+                    transport_state = root.find('.//CurrentTransportState', namespaces=namespaces).text
+                    print(f"Transport status: {transport_state}")
+
+                    if transport_state == "STOPPED":
+                        print("Player is STOPPED. Exiting loop.")
+                        proc_running = False
+                        break
+
+                    transport_status = root.find('.//CurrentTransportStatus', namespaces=namespaces).text if root.find('.//CurrentTransportStatus', namespaces=namespaces) is not None else "N/A"
+                    print(f"Specific state: {transport_status}")
+
+
+                except AttributeError as e:
+                    print(f"Errore durante la ricerca dell'elemento XML: {e}")
+                    print(transport_info_response)
+            else:
+                print(f"Error finding XML element: {error}")
+        else:
+            print("GetTransportInfo request failed.")
+            proc_running = False
+            break           
+
+        time.sleep(10)
 
 def extract_number_from_filename(filename):
     """

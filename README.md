@@ -23,6 +23,8 @@ Download and extract upnp_play zip file into a directory different from where yo
     pip install -r requirements.txt
     python upnp_play.py
 
+You can use "ctrl + n" and wait a few second to skip the current song, "ctrl + p" to pause and "ctrl + r" to resume.
+
 
 Android Box Configuration
 If you are using an Android box, you need to configure and enable media rendering for the apps:

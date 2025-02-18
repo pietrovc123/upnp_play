@@ -17,6 +17,8 @@ import configparser
 import re
 import sys
 import ast
+from pynput import keyboard
+
 
 # --- Read configuration from config.ini
 config = configparser.ConfigParser()
@@ -267,7 +269,6 @@ def orchestrate_ssdp():
 
 
 
-
 # --- Returns the local IP address of the machine.
 def get_local_ip():
     for interface in ni.interfaces():
@@ -448,52 +449,144 @@ stop_xml = """<?xml version="1.0" encoding="utf-8"?>
 # --- PositionInfo ---
 PositionInfo_xml = """<?xml version="1.0" encoding="UTF-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:GetPositionInfo xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID></u:GetPositionInfo></s:Body></s:Envelope>"""
 
+# --- Pause ---
+pause_xml = """
+<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
+    s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+    <s:Body>
+        <u:Pause xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+            <InstanceID>0</InstanceID> 
+        </u:Pause>
+    </s:Body>
+</s:Envelope>"""
+
 # --- GetTransportInfo Loop ---
 def get_transport_info_loop():
-    proc_running = True  # Internal control variable
-    while proc_running:
-        get_transport_info_xml = """<?xml version="1.0"?>
-        <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-          <s:Body>
-            <u:GetTransportInfo xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
-              <InstanceID>0</InstanceID>
-            </u:GetTransportInfo>
-          </s:Body>
-        </s:Envelope>"""
+    proc_running = True
+    paused = False
+    ctrl_held = False
+    lock = threading.Lock()
+    stop_event = threading.Event()  # Add an event to signal the listener to stop
+    
+    def on_press(key):
+        nonlocal paused, proc_running, ctrl_held
+        
+        # Check if the stop event is set
+        if stop_event.is_set():
+            return False  # This will stop the listener
+        
+        # Check if Control key is pressed
+        if hasattr(keyboard, 'Key') and isinstance(key, keyboard.Key) and key in (keyboard.Key.ctrl_l, keyboard.Key.ctrl_r, keyboard.Key.ctrl):
+            ctrl_held = True
+            return
+        
+        # Handle Ctrl+key combinations when ctrl is held
+        if ctrl_held:
+            try:
+                if hasattr(key, 'char') and key.char:
+                    if key.char == 'p':
+                        with lock:
+                            paused = True
+                            pause_response = send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#Pause", pause_xml)
+                            if pause_response:
+                                print(f"pause_response: {pause_response}")
+                            print("Loop paused")
+                    elif key.char == 'r':
+                        with lock:
+                            paused = False
+                            Play_info_response = send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#Play", play_xml)
+                            if Play_info_response:
+                                print(f"Play_info_response: {Play_info_response}")
+                            print("Loop resumed")
+                    elif key.char == 'n':
+                        with lock:
+                            print("Ctrl+n pressed. Exiting loop and go to the next song.")
+                            proc_running = False
+            except (AttributeError, TypeError):
+                pass
 
-        transport_info_response = send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo", get_transport_info_xml)
+    def on_release(key):
+        nonlocal ctrl_held
+        # Check if the stop event is set
+        if stop_event.is_set():
+            return False  # This will stop the listener
+            
+        if hasattr(keyboard, 'Key') and isinstance(key, keyboard.Key) and key in (keyboard.Key.ctrl_l, keyboard.Key.ctrl_r, keyboard.Key.ctrl):
+            ctrl_held = False
 
-        if transport_info_response:
+    # Start keyboard listener in a separate thread
+    listener = keyboard.Listener(on_press=on_press, on_release=on_release)
+    listener.daemon = True
+    listener.start()
+
+    try:
+        while proc_running:
+            with lock:
+                if not proc_running:
+                    break
+                
+            if paused:
+                time.sleep(0.1)
+                continue
+                
+            get_transport_info_xml = """<?xml version="1.0"?>
+            <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+              <s:Body>
+                <u:GetTransportInfo xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+                  <InstanceID>0</InstanceID>
+                </u:GetTransportInfo>
+              </s:Body>
+            </s:Envelope>"""
+            
+            transport_info_response = send_upnp_request("urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo", get_transport_info_xml)
+            
+            if not transport_info_response:
+                print("GetTransportInfo request failed.")
+                break
+
             print("GetTransportInfo request sent and response received. Parsing...")
             namespaces = {'s': 'http://schemas.xmlsoap.org/soap/envelope/', 'u': 'urn:schemas-upnp-org:service:AVTransport:1'}
             root, error = parse_xml_response(transport_info_response, namespaces)
-            print(f"root: {root}")
+            
+            if root is None:
+                print(f"Error parsing XML: {error}")
+                break
 
-            if root is not None:
-                try:
-                    transport_state = root.find('.//CurrentTransportState', namespaces=namespaces).text
-                    print(f"Transport status: {transport_state}")
+            try:
+                transport_state = root.find('.//CurrentTransportState', namespaces=namespaces).text
+                print(f"Transport status: {transport_state}")
+                
+                if transport_state == "STOPPED":
+                    print("Player is STOPPED....")
+                    proc_running = False
+                    
+                transport_status = root.find('.//CurrentTransportStatus', namespaces=namespaces).text if root.find('.//CurrentTransportStatus', namespaces=namespaces) is not None else "N/A"
+                print(f"Specific state: {transport_status}")
+                
+            except AttributeError as e:
+                print(f"Error during XML element search: {e}")
+                print(transport_info_response)
+                break
 
-                    if transport_state == "STOPPED":
-                        print("Player is STOPPED. Exiting loop.")
-                        proc_running = False
-                        break
+            time.sleep(10)
+            
+    finally:
+        # Set the stop event to signal the listener to stop
+        stop_event.set()
+        
+        # Create a timeout for the join operation
+        join_timeout = 0.5  # 500ms should be enough for the listener to stop
+        join_start = time.time()
+        
+        while listener.is_alive() and (time.time() - join_start) < join_timeout:
+            time.sleep(0.1)  # Short sleep to prevent CPU spinning
+        
+        if listener.is_alive():
+            print("Warning: Keyboard listener thread didn't terminate cleanly")
 
-                    transport_status = root.find('.//CurrentTransportStatus', namespaces=namespaces).text if root.find('.//CurrentTransportStatus', namespaces=namespaces) is not None else "N/A"
-                    print(f"Specific state: {transport_status}")
 
 
-                except AttributeError as e:
-                    print(f"Errore durante la ricerca dell'elemento XML: {e}")
-                    print(transport_info_response)
-            else:
-                print(f"Error finding XML element: {error}")
-        else:
-            print("GetTransportInfo request failed.")
-            proc_running = False
-            break           
-
-        time.sleep(10)
 
 def extract_number_from_filename(filename):
     """

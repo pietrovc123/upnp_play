@@ -18,6 +18,8 @@ import re
 import sys
 import ast
 from pynput import keyboard
+import tkinter as tk
+
 
 
 # --- Read configuration from config.ini
@@ -281,6 +283,33 @@ def get_local_ip():
 
 ip_address = get_local_ip()
 print(f"The local IP address is: {ip_address}")
+
+
+def show_notification(title, artist, duration=10):
+    def notification_thread():
+        root = tk.Tk()
+        root.overrideredirect(True)
+        root.attributes("-topmost", True)
+        root.configure(bg='black')
+
+        window_width = 900
+        window_height = 100
+        screen_width = root.winfo_screenwidth()
+        screen_height = root.winfo_screenheight()
+        x = screen_width - window_width - 20
+        y = 20
+        root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+
+        label_title = tk.Label(root, text=title, font=("Helvetica", 14, 'bold'), fg="white", bg="black")
+        label_title.pack(pady=(20, 0))
+        label_artist = tk.Label(root, text=artist, font=("Helvetica", 12), fg="white", bg="black")
+        label_artist.pack(pady=(10, 20))
+
+        # Schedule close after duration seconds (converted to milliseconds)
+        root.after(duration * 1000, root.destroy)
+        root.mainloop()
+    threading.Thread(target=notification_thread, daemon=True).start()
+
 
 
 def copy_file(source_file, destination_file):
@@ -742,7 +771,9 @@ for filename in filtered_file_list:
           album ="Python Script"
     print(f"album: {album}")
 
-
+    # Notification
+    show_notification(filename_view, artist)
+    
 
     # --- SetAVTransportURI completo ---
     set_uri_xml = f"""<?xml version="1.0" encoding="UTF-8"?>

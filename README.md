@@ -1,17 +1,27 @@
 upnp_play - Play/Cast an Audio File/Playlist to a UPNP/DLNA Device Renderer
 
 upnp_play is a program written in Python 3 that allows you to play/cast MP3/FLAC audio files from your PC to a TV or any other UPNP-compatible device.
-Samsung Smart TVs are already UPNP compatible, while for other TVs, you may need to purchase an Android box and install either Kodi (free) or BubbleUPnP (paid, costs €5.99).
+Some TVs are already UPNP compatible, while for other TVs, you may need to purchase an Android box and install either Kodi (free) or BubbleUPnP (paid, costs €5.99).
+This Python script acts as a UPnP/DLNA Media Renderer controller and a HTTP server. It discovers compatible devices on the local network, allows the user to select one, 
+then streams music files from a local directory to the selected device. It also provides a simple on-screen notification for the playing track and includes keyboard shortcuts for controlling playback.
 
 Installation
 Download and extract upnp_play zip file into a directory different from where your audio files are stored. The prerequisites for installation are as follows:
 
-    Linux
-    Python 3 and its libraries are usually pre-installed, so you only need to run:
+    Linux 
+    Python 3 and its libraries are usually pre-installed, pip and tk, so you only need to run:
     python3 -m venv upnp-play-env
     source upnp-play-env/bin/activate
     pip install -r requirements.txt
     python3 upnp_play.py
+    Warning: some distro as CachyOS use firewall, so you need to open traffic for your ip device, example my ip TV BOX is 192.168.1.13:
+    # Incoming
+    sudo ufw allow proto tcp from 192.168.1.13
+    sudo ufw allow proto udp from 192.168.1.13
+    # Outgoing
+    sudo ufw allow out proto tcp to 192.168.1.13
+    sudo ufw allow out proto udp to 192.168.1.13
+
 
     Windows
     Follow these steps:
